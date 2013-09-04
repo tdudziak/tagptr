@@ -3,7 +3,7 @@
 
 int main(int argc, char** argv)
 {
-    Value x(5);
+    Value x(INT_MAX-5);
     printf("%d\n", x.asInt());
     x = Value((void*) &main);
     printf("%p\n", x.asPtr());
