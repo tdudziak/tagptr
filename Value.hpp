@@ -3,10 +3,12 @@
 
 #include <cstdint>
 #include <cassert>
+#include <memory>
 
-#include <boost/pool/pool_alloc.hpp>
+#include "Allocator.hpp"
 
-// TODO: implement full value semantics (copy constructor, assignment operator, ...)
+namespace tagptr {
+
 class Value {
 private:
     static const uint32_t MASK = 0x3;
@@ -14,27 +16,61 @@ private:
     static const uint32_t TAG_SMALLINT = 0x1;
     static const uint32_t TAG_BOXEDINT = 0x2;
     static const uint32_t TAG_DOUBLE = 0x3;
-
-    // XXX: this isn't thread safe
-    // XXX: does boost::pool_allocator guarantee alignment?
-    static boost::pool_allocator<int64_t> pool;
+    static const uint32_t MASK_BOXED = 0x2;
 
     uint32_t val;
 
     static_assert(sizeof(void*) == sizeof(uint32_t), "only 32-bit pointers are supported");
     static_assert(sizeof(double) == sizeof(int64_t), "only 64-bit doubles are supported");
 
-    void box(uint64_t x, uint32_t tag)
+    inline void box(uint64_t x, uint32_t tag)
     {
-        int64_t* ptr = pool.allocate(1);
+        uint64_t* ptr = tagptr::global_allocator.allocate(1);
         *ptr = x;
         val = (uint32_t) ptr;
         assert((val&MASK) == 0x0 &&
-               "boost::pool_allocator returned unaligned address");
+               "boost::allocator returned unaligned address");
         val |= tag;
     }
 
+    inline void box_copy(const Value& other)
+    {
+        assert(other.val&MASK_BOXED);
+        uint64_t* other_ptr = (uint64_t*)(other.val&(~MASK));
+        uint64_t* ptr = tagptr::global_allocator.allocate(1);
+        *ptr = *other_ptr;
+        assert((val&MASK) == 0x0 &&
+               "boost::allocator returned unaligned address");
+        val = ((uint32_t) ptr) | (other.val&MASK);
+    }
+
+    inline void release()
+    {
+        if (val&MASK_BOXED)
+            tagptr::global_allocator.deallocate(reinterpret_cast<uint64_t*>(val&(~MASK)), 1);
+    }
+
 public:
+    inline Value& operator=(const Value& other)
+    {
+        release();
+
+        if (other.val&MASK_BOXED)
+            box_copy(other);
+        else
+            val = other.val;
+
+        return *this;
+    }
+
+    inline Value(const Value& other)
+    {
+        if (other.val&MASK_BOXED)
+            box_copy(other);
+        else
+            val = other.val;
+    }
+
     inline explicit Value(void* aligned_ptr)
     {
         val = (uint32_t) aligned_ptr;
@@ -54,7 +90,7 @@ public:
         if ((x&0xffffffffc0000000) == 0)
             val = (uint32_t(x) << 2) | TAG_SMALLINT;
         else
-            box(x, TAG_BOXEDINT);
+            box(x, TAG_BOXEDINT); // FIXME: reinterpret_cast?
     }
 
     inline explicit Value(double x)
@@ -93,14 +129,10 @@ public:
 
     ~Value()
     {
-        switch (val&MASK)
-        {
-        case TAG_DOUBLE:
-        case TAG_BOXEDINT:
-            pool.deallocate((int64_t*)(val^TAG_BOXEDINT), 1);
-            break;
-        }
+        release();
     }
 };
+
+}
 
 #endif
