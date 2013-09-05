@@ -13,6 +13,7 @@ private:
     static const uint32_t TAG_PTR = 0x0;
     static const uint32_t TAG_SMALLINT = 0x1;
     static const uint32_t TAG_BOXEDINT = 0x2;
+    static const uint32_t TAG_DOUBLE = 0x3;
 
     // XXX: this isn't thread safe
     // XXX: does boost::pool_allocator guarantee alignment?
@@ -21,15 +22,16 @@ private:
     uint32_t val;
 
     static_assert(sizeof(void*) == sizeof(uint32_t), "only 32-bit pointers are supported");
+    static_assert(sizeof(double) == sizeof(int64_t), "only 64-bit doubles are supported");
 
 public:
-    inline Value(void* aligned_ptr)
+    inline explicit Value(void* aligned_ptr)
     {
         val = (uint32_t) aligned_ptr;
         assert((val&MASK) == TAG_PTR && "pointer is not properly aligned");
     }
 
-    inline Value(int64_t x)
+    inline explicit Value(int64_t x)
     {
         if ((x&0xc0000000) == 0)
             val = (uint32_t(x) << 2) | TAG_SMALLINT;
@@ -41,6 +43,18 @@ public:
                    "boost::pool_allocator returned unaligned address");
             val |= TAG_BOXEDINT;
         }
+    }
+
+    inline explicit Value(int x) : Value((int64_t) x) {}
+
+    inline explicit Value(double x)
+    {
+        int64_t* ptr = pool.allocate(1);
+        *(double*)(ptr) = x;
+        val = (uint32_t) ptr;
+        assert((val&MASK) == 0x0 &&
+               "boost::pool_allocator returned unaligned address");
+        val |= TAG_DOUBLE;
     }
 
     inline int64_t asInt64()
@@ -65,10 +79,17 @@ public:
         return (void*)(val);
     }
 
+    inline double asDouble()
+    {
+        assert((val&MASK) == TAG_DOUBLE);
+        return *(double*)(val^TAG_DOUBLE);
+    }
+
     ~Value()
     {
         switch (val&MASK)
         {
+        case TAG_DOUBLE:
         case TAG_BOXEDINT:
             pool.deallocate((int64_t*)(val^TAG_BOXEDINT), 1);
             break;
