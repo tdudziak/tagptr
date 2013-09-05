@@ -24,6 +24,16 @@ private:
     static_assert(sizeof(void*) == sizeof(uint32_t), "only 32-bit pointers are supported");
     static_assert(sizeof(double) == sizeof(int64_t), "only 64-bit doubles are supported");
 
+    void box(uint64_t x, uint32_t tag)
+    {
+        int64_t* ptr = pool.allocate(1);
+        *ptr = x;
+        val = (uint32_t) ptr;
+        assert((val&MASK) == 0x0 &&
+               "boost::pool_allocator returned unaligned address");
+        val |= tag;
+    }
+
 public:
     inline explicit Value(void* aligned_ptr)
     {
@@ -31,30 +41,25 @@ public:
         assert((val&MASK) == TAG_PTR && "pointer is not properly aligned");
     }
 
-    inline explicit Value(int64_t x)
+    inline explicit Value(int32_t x)
     {
         if ((x&0xc0000000) == 0)
             val = (uint32_t(x) << 2) | TAG_SMALLINT;
-        else {
-            int64_t* ptr = pool.allocate(1);
-            *ptr = x;
-            val = (uint32_t) ptr;
-            assert((val&MASK) == 0x0 &&
-                   "boost::pool_allocator returned unaligned address");
-            val |= TAG_BOXEDINT;
-        }
+        else
+            box(x, TAG_BOXEDINT);
     }
 
-    inline explicit Value(int x) : Value((int64_t) x) {}
+    inline explicit Value(int64_t x)
+    {
+        if ((x&0xffffffffc0000000) == 0)
+            val = (uint32_t(x) << 2) | TAG_SMALLINT;
+        else
+            box(x, TAG_BOXEDINT);
+    }
 
     inline explicit Value(double x)
     {
-        int64_t* ptr = pool.allocate(1);
-        *(double*)(ptr) = x;
-        val = (uint32_t) ptr;
-        assert((val&MASK) == 0x0 &&
-               "boost::pool_allocator returned unaligned address");
-        val |= TAG_DOUBLE;
+        box(*reinterpret_cast<uint64_t*>(&x), TAG_DOUBLE);
     }
 
     inline int64_t asInt64()
@@ -68,7 +73,8 @@ public:
         }
     }
 
-    inline int asInt()
+    // NOTE: this overflows if Value contains a 64-bit int
+    inline int32_t asInt32()
     {
         return int(asInt64());
     }
@@ -82,7 +88,7 @@ public:
     inline double asDouble()
     {
         assert((val&MASK) == TAG_DOUBLE);
-        return *(double*)(val^TAG_DOUBLE);
+        return *reinterpret_cast<double*>(val^TAG_DOUBLE);
     }
 
     ~Value()
