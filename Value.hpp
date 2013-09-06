@@ -39,9 +39,10 @@ private:
         uint64_t* other_ptr = (uint64_t*)(other.val&(~MASK));
         uint64_t* ptr = tagptr::global_allocator.allocate(1);
         *ptr = *other_ptr;
+        val = (uint32_t) ptr;
         assert((val&MASK) == 0x0 &&
                "boost::allocator returned unaligned address");
-        val = ((uint32_t) ptr) | (other.val&MASK);
+        val |= other.val&MASK;
     }
 
     inline void release()
@@ -53,6 +54,9 @@ private:
 public:
     inline Value& operator=(const Value& other)
     {
+        if (this == &other)
+            return *this;
+
         release();
 
         if (other.val&MASK_BOXED)
