@@ -131,6 +131,21 @@ public:
         return *reinterpret_cast<double*>(val^TAG_DOUBLE);
     }
 
+    inline bool isInt()
+    {
+        return (val&MASK) == TAG_SMALLINT || (val&MASK) == TAG_BOXEDINT;
+    }
+
+    inline bool isDouble()
+    {
+        return (val&MASK) == TAG_DOUBLE;
+    }
+
+    inline bool isPtr()
+    {
+        return (val&MASK) == TAG_PTR;
+    }
+
     ~Value()
     {
         release();
