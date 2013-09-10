@@ -113,6 +113,7 @@ public:
         assert((val&MASK) == TAG_PTR && "pointer is not properly aligned");
     }
 
+    // FIXME: all negative integers are currently boxed
     inline explicit ValueTemplate(int_t x)
     {
         slot_t slot = slot_t(x);
@@ -164,6 +165,11 @@ public:
     inline bool isPtr()
     {
         return (val&MASK) == TAG_PTR;
+    }
+
+    inline bool isBoxed()
+    {
+        return val&MASK_BOXED;
     }
 
     ~ValueTemplate()

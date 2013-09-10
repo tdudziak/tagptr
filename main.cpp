@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cmath>
+#include <cstdlib>
 #include <boost/foreach.hpp>
 
 #include "Value.hpp"
@@ -81,6 +82,32 @@ BOOST_AUTO_TEST_CASE(test_different_assignments)
     BOOST_CHECK(x.asInt() == 5);
     BOOST_CHECK(y.asInt() == 5);
     BOOST_CHECK(z.asInt() == 5);
+}
+
+BOOST_AUTO_TEST_CASE(test_int_boxing)
+{
+    BOOST_CHECK(sizeof(uintptr_t) == 4 && "this test is not portable");
+    const int64_t boundary = 0x3fffffff;
+    Value unboxed(boundary), boxed(boundary+1), negative(-1LL);
+    BOOST_CHECK(boxed.isBoxed());
+    BOOST_CHECK(!unboxed.isBoxed());
+    BOOST_CHECK(negative.isBoxed());
+
+    std::srand(0);
+    for (int i = 0; i < 1000; i++)
+    {
+        int64_t val = int64_t(std::rand()) << (sizeof(int)*CHAR_BIT+1)
+                       | int64_t(std::rand());
+        Value x(val);
+
+        if (val >= 0 && val <= boundary)
+            BOOST_CHECK(!x.isBoxed());
+        else
+            BOOST_CHECK(x.isBoxed());
+
+        BOOST_CHECK(x.asInt() == val);
+        BOOST_CHECK(x.isInt());
+    }
 }
 
 #define PARAM_TEST(func, params) framework::master_test_suite().add(BOOST_PARAM_TEST_CASE(func, params, params+sizeof(params)/sizeof(params[0])))
